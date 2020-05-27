@@ -93,6 +93,9 @@
 }
 
 - (void)clickConvertButton:(id)sender {
+    [_playView setWantsLayer:YES];
+    [_playView.layer setBackgroundColor:[[NSColor blackColor] CGColor]];
+
     [_encoder startWithWidth:self.image.size.width * 2 andHeight:self.image.size.height andFPS:30];
 
     if ([self.fileURLArray count] > 0) {
@@ -209,19 +212,31 @@
     UInt8 * buf = (UInt8 *) CFDataGetBytePtr(rawData);
     CFIndex length = CFDataGetLength(rawData);
     UInt8 *alphaBuf = malloc(sizeof(UInt8) * length);
-    for(unsigned long i = 0; i < length; i += 4) {
-        alphaBuf[i] = buf[i + 3];
-        alphaBuf[i + 1] = buf[i + 3];
-        alphaBuf[i + 2] = buf[i + 3];
-        alphaBuf[i + 3] = 0xFF;
-    }
+//    for(unsigned long i = 0; i < length; i += 4) {
+//        alphaBuf[i] = buf[i + 3];
+//        alphaBuf[i + 1] = buf[i + 3];
+//        alphaBuf[i + 2] = buf[i + 3];
+//        alphaBuf[i + 3] = 0xFF;
+//    }
+    memcpy(alphaBuf, buf, length);
     CFRelease(rawData);
 
     size_t bufferLength = length;
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, alphaBuf, bufferLength, NULL);
-    size_t bitsPerComponent = 8;
-    size_t bitsPerPixel = 32;
-    size_t bytesPerRow = 4 * frameWidth;
+    size_t bitsPerComponent = CGImageGetBitsPerComponent(image);//8;
+    size_t bitsPerPixel = CGImageGetBitsPerPixel(image);//32;
+    size_t bytesPerRow = CGImageGetBytesPerRow(image);//4 * frameWidth;
+
+    for (int i = 0; i < frameHeight; i++) {
+        for (int j = 0; j < frameWidth; j++) {
+            unsigned long index = i * bytesPerRow + j * 4;
+            uint8_t temp = alphaBuf[index + 3];
+            alphaBuf[index] = temp;
+            alphaBuf[index + 1] = temp;
+            alphaBuf[index + 2] = temp;
+            alphaBuf[index + 3] = 0xFF;
+        }
+    }
 
 //    CGColorSpaceRef colorSpaceRef = CGColorSpaceCreateDeviceRGB();
 //    if(colorSpaceRef == NULL) {
@@ -230,8 +245,11 @@
 //        return nil;
 //    }
 
-    CGBitmapInfo bitmapInfo = kCGBitmapByteOrderDefault;
-    CGColorRenderingIntent renderingIntent = kCGRenderingIntentDefault;
+    CGBitmapInfo bitmapInfo = CGImageGetBitmapInfo(image);//kCGBitmapByteOrderDefault;
+    CGColorRenderingIntent renderingIntent = CGImageGetRenderingIntent(image);//kCGRenderingIntentDefault;
+
+    CGContextSetFillColorWithColor(context, CGColorCreateSRGB(1.0, 1.0, 1.0, 1.0));
+    CGContextFillRect(context, CGRectMake(0, 0, frameWidth, frameHeight));
 
     CGImageRef iref = CGImageCreate(frameWidth,
                                     frameHeight,

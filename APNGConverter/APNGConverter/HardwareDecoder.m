@@ -296,7 +296,7 @@
 //    size_t count = CVPixelBufferGetPlaneCount(pixelBuffer);
     unsigned long yWidth = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
 //    size_t yHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
-//    size_t uvWidth = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
+    size_t uvWidth = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
 //    size_t uvHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
     uint8_t *yAddr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0);
     uint16_t *uvAddr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1);
@@ -305,14 +305,24 @@
         for (int j = 0; j < frameWidth; j++) {
             unsigned long index = (i * frameWidth + j) * 4;
             unsigned long yIndex = i * yWidth + j;
-            unsigned long yaIndex = i * yWidth + j + frameWidth;
-//            unsigned long uIndex = yIndex / 4;
             unsigned long uIndex = j / 2 + (i / 2) * yWidth / 2;
-//            unsigned long vIndex = uIndex + 1;//frameWidth * frameHeight / 4;
+            unsigned long yaIndex = i * yWidth + j + frameWidth;
+            unsigned long uaIndex = j / 2 + (i / 2) * yWidth / 2 + uvWidth / 4;
+
             double y = (double)yAddr[yIndex];
-            UInt8 ya = yAddr[yaIndex];
             double v = (uint16_t)uvAddr[uIndex] >> 8;
             double u = (uint16_t)uvAddr[uIndex] & 0xFF;
+
+            y = (y - 16.0) / 220.0 * 255.0;
+            v = (v - 16.0) / 225.0 * 255.0;
+            u = (u - 16.0) / 225.0 * 255.0;
+
+            double ya = yAddr[yaIndex];
+            double va = (uint16_t)uvAddr[uaIndex] >> 8;
+            double ua = (uint16_t)uvAddr[uaIndex] & 0xFF;
+
+            ya = (ya - 16.0) / 220.0 * 255.0;
+            va = (va - 16.0) / 225.0 * 255.0;
 
 //            double r = y + 1.28033 * (v - 128);
 //            double g = y - 0.21482 * (u - 128) - 0.38059 * (v - 128);
@@ -322,10 +332,56 @@
             double g = y - (0.337633 * (u - 128)) - (0.698001 * (v - 128));
             double b = y + (1.732446 * (u - 128));
 
+            double ra = ya + (1.370705 * (va - 128));
+            double ga = ya - (0.337633 * (ua - 128)) - (0.698001 * (va - 128));
+            double ba = ya + (1.732446 * (ua - 128));
+
+//            r -= ra;
+//            g -= ga;
+//            b -= ba;
+
+            if (r < 0) {
+                r = 0;
+            }
+            if (r > 255) {
+                r = 255;
+            }
+            if (g < 0) {
+                g = 0;
+            }
+            if (g > 255) {
+                g = 255;
+            }
+            if (b < 0) {
+                b = 0;
+            }
+            if (b > 255) {
+                b = 255;
+            }
+
+            if (ra < 0) {
+                ra = 0;
+            }
+            if (ra > 255) {
+                ra = 255;
+            }
+            if (ga < 0) {
+                ga = 0;
+            }
+            if (ga > 255) {
+                ga = 255;
+            }
+            if (ba < 0) {
+                ba = 0;
+            }
+            if (ba > 255) {
+                ba = 255;
+            }
+
             alphaBuf[index] = b;
             alphaBuf[index + 1] = g;
             alphaBuf[index + 2] = r;
-            alphaBuf[index + 3] = ya;
+            alphaBuf[index + 3] = ra;
         }
     }
 
@@ -394,7 +450,7 @@
     if(status == noErr) {
 //        CFDictionaryRef attrs = NULL;
 //        const void *keys[] = { kCVPixelBufferPixelFormatTypeKey };
-//        uint32_t v = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
+        uint32_t v = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
 //        const void *values[] = { CFNumberCreate(NULL, kCFNumberSInt32Type, &v) };
 //        attrs = CFDictionaryCreate(NULL, keys, values, 1, NULL, NULL);
 

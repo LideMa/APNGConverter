@@ -750,7 +750,7 @@
                             <imageView horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="kEG-6X-oMH" customClass="PlayView" customModule="APNGConverter" customModuleProvider="target">
                                 <rect key="frame" x="107" y="20" width="408" height="199"/>
                                 <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                                <imageCell key="cell" refusesFirstResponder="YES" alignment="left" imageScaling="proportionallyDown" imageFrameStyle="photo" id="zjg-2i-wPL"/>
+                                <imageCell key="cell" refusesFirstResponder="YES" alignment="left" imageScaling="proportionallyDown" id="zjg-2i-wPL"/>
                             </imageView>
                         </subviews>
                     </view>
