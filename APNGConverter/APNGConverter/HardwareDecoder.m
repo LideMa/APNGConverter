@@ -231,7 +231,150 @@
         CFRelease(blockBuffer);
     }
 
-    return outputPixelBuffer;
+    CVPixelBufferRef transBuffer = [self transformPixelBuffer:outputPixelBuffer];
+    return transBuffer;
+//    return outputPixelBuffer;
+}
+
+- (CVPixelBufferRef)transformPixelBuffer:(CVPixelBufferRef)pixelBuffer {
+    CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+
+//    size_t count = CVPixelBufferGetPlaneCount(pixelBuffer);
+//    size_t yWidth = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0);
+//    size_t yHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
+//    size_t uvWidth = CVPixelBufferGetWidthOfPlane(pixelBuffer, 1);
+//    size_t uvHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
+//    uint8_t *yAddr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0);
+//    uint8_t *uAddr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1);
+//    uint8_t *vAddr = uAddr + uvWidth * uvHeight / 2;
+//    uint8_t y = yAddr[0];
+//    uint8_t u = uAddr[0];
+//    uint8_t v = uAddr[1];
+//    uint8_t r = (298 * (y - 16) + 409 * (v - 128) + 128) >> 8;
+//    uint8_t g = (298 * (y - 16) - 100 * (u - 128) - 208 * (v - 128) + 128) >> 8;
+//    uint8_t b = (298 * (y - 16) + 516 * (u - 128) + 128) >> 8;
+
+    NSDictionary *options = @{
+    (NSString*)kCVPixelBufferCGImageCompatibilityKey : @YES,
+    (NSString*)kCVPixelBufferCGBitmapContextCompatibilityKey : @YES,
+    (NSString*)kCVPixelBufferIOSurfacePropertiesKey: [NSDictionary dictionary]
+    };
+    CVPixelBufferRef pxbuffer = NULL;
+
+    unsigned long frameWidth = CVPixelBufferGetWidth(pixelBuffer) / 2;
+    unsigned long frameHeight = CVPixelBufferGetHeight(pixelBuffer);
+
+    CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault,
+                                          frameWidth,
+                                          frameHeight,
+                                          kCVPixelFormatType_32BGRA,
+                                          (__bridge CFDictionaryRef) options,
+                                          &pxbuffer);
+
+    NSParameterAssert(status == kCVReturnSuccess && pxbuffer != NULL);
+
+    CVPixelBufferLockBaseAddress(pxbuffer, 0);
+    void *pxdata = CVPixelBufferGetBaseAddress(pxbuffer);
+    NSParameterAssert(pxdata != NULL);
+
+    CGColorSpaceRef rgbColorSpace = CGColorSpaceCreateDeviceRGB();
+
+    CGContextRef context = CGBitmapContextCreate(pxdata,
+                                                 frameWidth,
+                                                 frameHeight,
+                                                 8,
+                                                 CVPixelBufferGetBytesPerRow(pxbuffer),
+                                                 rgbColorSpace,
+                                                 (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    NSParameterAssert(context);
+    CGContextConcatCTM(context, CGAffineTransformIdentity);
+
+    CFIndex length = frameWidth * frameHeight * 4;
+    UInt8 *alphaBuf = malloc(sizeof(UInt8) * length);
+
+    // start
+//    size_t count = CVPixelBufferGetPlaneCount(pixelBuffer);
+    unsigned long yWidth = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
+//    size_t yHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0);
+//    size_t uvWidth = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
+//    size_t uvHeight = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1);
+    uint8_t *yAddr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0);
+    uint16_t *uvAddr = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1);
+
+    for (int i = 0; i < frameHeight; i++) {
+        for (int j = 0; j < frameWidth; j++) {
+            unsigned long index = (i * frameWidth + j) * 4;
+            unsigned long yIndex = i * yWidth + j;
+            unsigned long yaIndex = i * yWidth + j + frameWidth;
+//            unsigned long uIndex = yIndex / 4;
+            unsigned long uIndex = j / 2 + (i / 2) * yWidth / 2;
+//            unsigned long vIndex = uIndex + 1;//frameWidth * frameHeight / 4;
+            double y = (double)yAddr[yIndex];
+            UInt8 ya = yAddr[yaIndex];
+            double v = (uint16_t)uvAddr[uIndex] >> 8;
+            double u = (uint16_t)uvAddr[uIndex] & 0xFF;
+
+//            double r = y + 1.28033 * (v - 128);
+//            double g = y - 0.21482 * (u - 128) - 0.38059 * (v - 128);
+//            double b = y + 2.12798 * (u - 128);
+
+            double r = y + (1.370705 * (v - 128));
+            double g = y - (0.337633 * (u - 128)) - (0.698001 * (v - 128));
+            double b = y + (1.732446 * (u - 128));
+
+            alphaBuf[index] = b;
+            alphaBuf[index + 1] = g;
+            alphaBuf[index + 2] = r;
+            alphaBuf[index + 3] = ya;
+        }
+    }
+
+    size_t bufferLength = length;
+    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, alphaBuf, bufferLength, NULL);
+    size_t bitsPerComponent = 8;
+    size_t bitsPerPixel = 32;
+    size_t bytesPerRow = 4 * frameWidth;
+
+    CGColorSpaceRef colorSpaceRef = CGColorSpaceCreateDeviceRGB();
+    if(colorSpaceRef == NULL) {
+        NSLog(@"Error allocating color space");
+        CGDataProviderRelease(provider);
+        return nil;
+    }
+
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaLast;
+    CGColorRenderingIntent renderingIntent = kCGRenderingIntentDefault;
+
+    CGImageRef iref = CGImageCreate(frameWidth,
+                                    frameHeight,
+                                    bitsPerComponent,
+                                    bitsPerPixel,
+                                    bytesPerRow,
+                                    colorSpaceRef,
+                                    bitmapInfo,
+                                    provider,   // data provider
+                                    NULL,       // decode
+                                    YES,            // should interpolate
+                                    renderingIntent);
+    CGContextSetFillColorWithColor(context, CGColorCreateSRGB(1.0, 0.0, 0.0, 0.0));
+    CGContextFillRect(context, CGRectMake(0,
+                                          0,
+                                          frameWidth,
+                                          frameHeight));
+    CGContextDrawImage(context, CGRectMake(0,
+                                           0,
+                                           frameWidth,
+                                           frameHeight),
+                       iref);
+
+    CGImageRelease(iref);
+    free(alphaBuf);
+    CGColorSpaceRelease(rgbColorSpace);
+    CGContextRelease(context);
+
+    CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+
+    return pxbuffer;
 }
 
 - (BOOL)setupDecoder {

@@ -14,7 +14,7 @@
     [super drawRect:dirtyRect];
     
     // Drawing code here.
-    [[NSColor whiteColor] setFill];
+    [[NSColor redColor] setFill];
     NSRectFill(dirtyRect);
 }
 

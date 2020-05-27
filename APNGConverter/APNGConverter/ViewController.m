@@ -93,7 +93,7 @@
 }
 
 - (void)clickConvertButton:(id)sender {
-    [_encoder startWithWidth:self.image.size.width andHeight:self.image.size.height andFPS:30];
+    [_encoder startWithWidth:self.image.size.width * 2 andHeight:self.image.size.height andFPS:30];
 
     if ([self.fileURLArray count] > 0) {
         [self.fileURLArray enumerateObjectsUsingBlock:^(NSURL *fileURL, NSUInteger idx, BOOL * _Nonnull stop) {
@@ -175,7 +175,7 @@
     CGFloat frameHeight = CGImageGetHeight(image);
 
     CVReturn status = CVPixelBufferCreate(kCFAllocatorDefault,
-                                          frameWidth,
+                                          frameWidth * 2,
                                           frameHeight,
                                           kCVPixelFormatType_32ARGB,
                                           (__bridge CFDictionaryRef) options,
@@ -190,7 +190,7 @@
     CGColorSpaceRef rgbColorSpace = CGColorSpaceCreateDeviceRGB();
 
     CGContextRef context = CGBitmapContextCreate(pxdata,
-                                                 frameWidth,
+                                                 frameWidth * 2,
                                                  frameHeight,
                                                  8,
                                                  CVPixelBufferGetBytesPerRow(pxbuffer),
@@ -199,16 +199,64 @@
     NSParameterAssert(context);
     CGContextConcatCTM(context, CGAffineTransformIdentity);
 
-    CGContextSetFillColorWithColor(context, CGColorCreateSRGB(83.0 / 255.0, 177.0 / 255.0, 114.0 / 255.0, 1.0));
-    CGContextFillRect(context, CGRectMake(0,
-                                          0,
-                                          frameWidth,
-                                          frameHeight));
+//    CGContextSetFillColorWithColor(context, CGColorCreateSRGB(83.0 / 255.0, 177.0 / 255.0, 114.0 / 255.0, 1.0));
+//    CGContextFillRect(context, CGRectMake(0,
+//                                          0,
+//                                          frameWidth * 2,
+//                                          frameHeight));
+
+    CFDataRef rawData = CGDataProviderCopyData(CGImageGetDataProvider(image));
+    UInt8 * buf = (UInt8 *) CFDataGetBytePtr(rawData);
+    CFIndex length = CFDataGetLength(rawData);
+    UInt8 *alphaBuf = malloc(sizeof(UInt8) * length);
+    for(unsigned long i = 0; i < length; i += 4) {
+        alphaBuf[i] = buf[i + 3];
+        alphaBuf[i + 1] = buf[i + 3];
+        alphaBuf[i + 2] = buf[i + 3];
+        alphaBuf[i + 3] = 0xFF;
+    }
+    CFRelease(rawData);
+
+    size_t bufferLength = length;
+    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, alphaBuf, bufferLength, NULL);
+    size_t bitsPerComponent = 8;
+    size_t bitsPerPixel = 32;
+    size_t bytesPerRow = 4 * frameWidth;
+
+//    CGColorSpaceRef colorSpaceRef = CGColorSpaceCreateDeviceRGB();
+//    if(colorSpaceRef == NULL) {
+//        NSLog(@"Error allocating color space");
+//        CGDataProviderRelease(provider);
+//        return nil;
+//    }
+
+    CGBitmapInfo bitmapInfo = kCGBitmapByteOrderDefault;
+    CGColorRenderingIntent renderingIntent = kCGRenderingIntentDefault;
+
+    CGImageRef iref = CGImageCreate(frameWidth,
+                                    frameHeight,
+                                    bitsPerComponent,
+                                    bitsPerPixel,
+                                    bytesPerRow,
+                                    rgbColorSpace,//colorSpaceRef,
+                                    bitmapInfo,
+                                    provider,   // data provider
+                                    NULL,       // decode
+                                    YES,            // should interpolate
+                                    renderingIntent);
+
     CGContextDrawImage(context, CGRectMake(0,
                                            0,
                                            frameWidth,
                                            frameHeight),
                        image);
+    CGContextDrawImage(context, CGRectMake(frameWidth,
+                        0,
+                        frameWidth,
+                        frameHeight),
+    iref);
+    CGImageRelease(iref);
+    free(alphaBuf);
     CGColorSpaceRelease(rgbColorSpace);
     CGContextRelease(context);
 
@@ -235,15 +283,18 @@
     [_fileParser startParserWithDataBlock:^(NSData * _Nonnull data) {
 //        [_decoder decodeWithData:data andAVSLayer:_displayLayer];
         [_decoder decodeWithData:data result:^(CVPixelBufferRef  _Nonnull pixelBuffer) {
-            CIImage *ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
-            CIContext *context = [CIContext contextWithOptions:nil];
-            unsigned long width = CVPixelBufferGetWidth(pixelBuffer);
-             unsigned long height = CVPixelBufferGetHeight(pixelBuffer);
-            CGImageRef imageRef = [context createCGImage:ciImage fromRect:CGRectMake(0, 0, width, height)];
-            NSImage *image = [[NSImage alloc] initWithCGImage:imageRef size:CGSizeMake(width, height)];
-            dispatch_async(dispatch_get_main_queue(), ^{
-                _playView.image = image;
-            });
+            @autoreleasepool {
+                CIImage *ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+                CIContext *context = [CIContext contextWithOptions:nil];
+                unsigned long width = CVPixelBufferGetWidth(pixelBuffer);
+                unsigned long height = CVPixelBufferGetHeight(pixelBuffer);
+                CGImageRef imageRef = [context createCGImage:ciImage fromRect:CGRectMake(0, 0, width, height)];
+                NSImage *image = [[NSImage alloc] initWithCGImage:imageRef size:CGSizeMake(width, height)];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    _playView.image = image;
+                });
+                CGImageRelease(imageRef);
+            }
         }];
     }];
 }
